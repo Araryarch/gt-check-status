@@ -1,66 +1,161 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
 
 export default function Home() {
+  const [data, setData] = useState<{ state: string; status?: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [permission, setPermission] = useState<NotificationPermission>('default');
+  const [polling, setPolling] = useState(false);
+  
+  // Keep track of previous state to trigger notification only on change
+  const prevStateRef = useRef<string | null>(null);
+
+  const checkStatus = async (isAuto = false) => {
+    if (!isAuto) setLoading(true);
+    try {
+      const res = await fetch('/api/check');
+      const json = await res.json();
+      setData(json);
+      setLastUpdated(new Date().toLocaleTimeString());
+
+      // Notification Logic
+      if (isAuto && json.state === 'SUCCESS' && prevStateRef.current !== 'SUCCESS') {
+        sendNotification('Growtopia Server is Online!', 'The website returned 200 OK.');
+      } else if (isAuto && json.state !== 'SUCCESS' && prevStateRef.current === 'SUCCESS') {
+         sendNotification('Growtopia Server might be Down', `Status code: ${json.status}`);
+      }
+      
+      prevStateRef.current = json.state;
+
+    } catch (err) {
+      setData({ state: 'ERROR' });
+    } finally {
+      if (!isAuto) setTimeout(() => setLoading(false), 500);
+    }
+  };
+
+  const requestNotification = async () => {
+    if (!('Notification' in window)) {
+      alert('This browser does not support desktop notification');
+      return;
+    }
+    const result = await Notification.requestPermission();
+    setPermission(result);
+  };
+
+  const sendNotification = (title: string, body: string) => {
+    if (permission === 'granted') {
+      new Notification(title, {
+        body: body,
+        icon: '/icon.png',
+      });
+    }
+  };
+
+  const togglePolling = () => {
+    setPolling(!polling);
+  };
+
+  useEffect(() => {
+    // Initial check
+    checkStatus();
+
+    // Check notification permission on mount
+    if ('Notification' in window) {
+      setPermission(Notification.permission);
+    }
+  }, []);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (polling) {
+      // Check every 30 seconds if polling is enabled
+      interval = setInterval(() => {
+         checkStatus(true);
+      }, 30000); // 30 seconds
+    }
+    return () => clearInterval(interval);
+  }, [polling]);
+
+  let statusClass = 'status-loading';
+  let icon = ''; 
+  let statusText = 'Checking...';
+  let subText = 'Connecting to Growtopia servers';
+
+  if (!loading && data) {
+    if (data.state === 'SUCCESS') {
+      statusClass = 'status-success';
+      icon = '✓';
+      statusText = 'Online & Healthy';
+      subText = 'The website is accessible (200 OK)';
+    } else if (data.state === 'FORBIDDEN') {
+      statusClass = 'status-forbidden';
+      icon = '✕';
+      statusText = 'Access Forbidden';
+      subText = 'The website is returning 403 Forbidden';
+    } else {
+      statusClass = 'status-forbidden'; 
+      icon = '!';
+      statusText = 'Service Unreachable';
+      subText = `Status Code: ${data.status || 'Unknown'}`;
+    }
+  }
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
+    <main>
+       <div className="glass-card">
+          <h1 className="title">Growtopia Status</h1>
+          <p className="subtitle">Real-time website health monitor</p>
+
+          <div className={`status-indicator ${statusClass}`}>
+            <span className="status-icon">{icon}</span>
+          </div>
+
+          <h2 className="status-text">{statusText}</h2>
+          <p className="status-subtext">{subText}</p>
+
+          <div style={{ display: 'flex', gap: '10px', width: '100%', flexDirection: 'column' }}>
+            <button 
+              className="cta-button" 
+              onClick={() => checkStatus()} 
+              disabled={loading}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
+              {loading ? 'Refreshing...' : 'Check Now'}
+            </button>
+
+             <button 
+              className={`cta-button secondary ${polling ? 'active' : ''}`}
+              onClick={togglePolling} 
+              style={{ background: polling ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid var(--glass-border)', color: polling ? '#10B981' : 'var(--text-muted)' }}
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+              {polling ? 'Auto-Check Details: ON' : 'Enable Auto-Updates'}
+            </button>
+          </div>
+
+          
+          {permission !== 'granted' && permission !== 'denied' && (
+             <button 
+             onClick={requestNotification}
+             style={{ background: 'none', border: 'none', color: 'var(--primary)', marginTop: '20px', cursor: 'pointer', textDecoration: 'underline' }}
+             >
+               Enable Notifications
+             </button>
+          )}
+
+           {permission === 'denied' && (
+             <p style={{ marginTop: '20px', fontSize: '0.8rem', color: 'var(--error)' }}>
+               Notifications denied. Check browser settings.
+             </p>
+          )}
+          
+          {lastUpdated && !loading && (
+             <div style={{ marginTop: '20px', color: 'var(--text-muted)', fontSize: '0.8rem', opacity: 0.6 }}>
+               Last checked: {lastUpdated}
+             </div>
+          )}
+       </div>
+    </main>
   );
 }
