@@ -47,10 +47,28 @@ export default function Home() {
 
   const sendNotification = (title: string, body: string) => {
     if (permission === 'granted') {
-      new Notification(title, {
-        body: body,
-        icon: '/icon.png',
-      });
+      // Try to use Service Worker registration if available (better for PWA)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.showNotification(title, {
+            body: body,
+            icon: '/icon.png',
+            tag: 'growtopia-status' // prevents stacking multiple notifications
+          });
+        }).catch(() => {
+          // Fallback if SW not ready/failed
+          new Notification(title, {
+             body: body,
+             icon: '/icon.png',
+          });
+        });
+      } else {
+         // Fallback for non-SW browsers
+         new Notification(title, {
+           body: body,
+           icon: '/icon.png',
+         });
+      }
     }
   };
 
@@ -71,10 +89,10 @@ export default function Home() {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (polling) {
-      // Check every 30 seconds if polling is enabled
+      // Check every 1 hour if polling is enabled
       interval = setInterval(() => {
          checkStatus(true);
-      }, 30000); // 30 seconds
+      }, 3600000); // 1 hour
     }
     return () => clearInterval(interval);
   }, [polling]);
